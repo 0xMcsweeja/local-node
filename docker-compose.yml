@@ -1,0 +1,57 @@
+version: "3.9"
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "3"
+
+services:
+  geth:
+    image: ethereum/client-go:${GETH_VERSION}
+    restart: unless-stopped
+    command: >
+      geth --mainnet \
+           --syncmode=snap \
+           --http --http.addr=0.0.0.0 --http.vhosts="*" \
+           --http.api="eth,net,web3" \
+           --authrpc.addr=0.0.0.0 --authrpc.port=8551 \
+           --authrpc.vhosts="*" --authrpc.jwtsecret=/jwt/jwt.hex \
+           --datadir=/opt/geth \
+           --metrics --metrics.addr=0.0.0.0 --metrics.port=6060
+    volumes:
+      - ./data/geth:/opt/geth
+      - ./jwtsecret:/jwt:ro
+    ports:
+      - "8545:8545"   # JSON‑RPC
+      - "8551:8551"   # Engine API
+      - "30303:30303" # P2P
+    logging: *default-logging
+
+  lighthouse:
+    image: sigp/lighthouse:${LIGHTHOUSE_VERSION}
+    restart: unless-stopped
+    depends_on:
+      - geth
+    command: >
+      lighthouse bn \
+        --network mainnet \
+        --datadir=/opt/lighthouse \
+        --execution-endpoints=http://geth:8551 \
+        --execution-jwt=/jwt/jwt.hex \
+        --checkpoint-sync-url="https://checkpoint.mainnet.ethereum.org" \
+        --metrics \
+        --validator-monitor-auto
+    volumes:
+      - ./data/lighthouse:/opt/lighthouse
+      - ./jwtsecret:/jwt:ro
+    ports:
+      - "9000:9000"   # P2P
+      - "5052:5052"   # REST API
+      - "5054:5054"   # Metrics
+    logging: *default-logging
+
+networks:
+  default:
+    name: eth-node-net
+    driver: bridge
