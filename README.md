@@ -4,7 +4,7 @@ A minimal, production-ready Ethereum node setup using Docker Compose. Combines G
 
 > Tested on Windows 10 Home with WSL 2 (Ubuntu 22.04) and Docker Desktop 4.30
 
-## Why This Matters
+## Components
 
 Post-merge Ethereum requires two client layers working together:
 
