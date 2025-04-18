@@ -1,0 +1,3 @@
+# Ignore chain data and JWT secrets
+/data/
+/jwtsecret/
