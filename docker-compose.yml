@@ -1,69 +1,96 @@
 version: "3.9"
 
-x-logging: &default-logging
-  driver: json-file
-  options:
-    max-size: "100m"
-    max-file: "3"
+x-common-logging: &logging
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "50m"
+      max-file: "3"
 
 services:
+  # ── Execution client ───────────────────────────────────────────────
   geth:
-    image: ethereum/client-go:${GETH_VERSION}
-    restart: unless-stopped
-    command: >
-      geth --mainnet \
-           --syncmode=snap \
-           --http --http.addr=0.0.0.0 --http.vhosts="*" \
-           --http.api="eth,net,web3" \
-           --authrpc.addr=0.0.0.0 --authrpc.port=8551 \
-           --authrpc.vhosts="*" --authrpc.jwtsecret=/jwt/jwt.hex \
-           --datadir=/opt/geth \
-           --metrics --metrics.addr=0.0.0.0 --metrics.port=6060
+    image: ethereum/client-go:stable
+    container_name: geth
+    <<: *logging
+    command:
+      - "--syncmode=snap"
+      - "--datadir=/geth"
+      - "--port=30303"
+      - "--http"
+      - "--http.addr=0.0.0.0"
+      - "--http.port=8545"
+      - "--http.api=eth,net,web3,txpool"
+      - "--http.corsdomain=*"
+      - "--ws"
+      - "--ws.addr=0.0.0.0"
+      - "--ws.port=8546"
+      - "--graphql"
+      - "--authrpc.addr=0.0.0.0"
+      - "--authrpc.port=8551"
+      - "--authrpc.vhosts=*"
+      - "--authrpc.jwtsecret=/secrets/jwt.hex"
+      - "--metrics"
+      - "--metrics.addr=0.0.0.0"
+      - "--metrics.port=6060"
+      - "--verbosity=3"
+      - "--maxpeers=100"
+      - "--nat=extip:116.255.44.11"
+      # ── alternatively, you can uncomment to disable Geth’s NAT logic entirely ──
+      # - "--nat=none"
+      # ── Use official Ethereum mainnet bootnodes ──
     volumes:
-      - ./data/geth:/opt/geth
-      - ./jwtsecret:/jwt:ro
+      - geth-data:/geth
+      - ./jwtsecret:/secrets:ro
     ports:
-      - "${GETH_RPC_PORT}:8545"   # JSON‑RPC
-      - "8551:8551"   # Engine API
-      - "30303:30303" # P2P
-    healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "8545"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    logging: *default-logging
+      - "8545:8545/tcp"
+      - "8546:8546/tcp"
+      - "8551:8551/tcp"
+      - "30303:30303/tcp"
+      - "30303:30303/udp"
+      - "30304:30304/udp"
+      - "6060:6060/tcp"
+    networks:
+      - ethereum-network
 
+  # ── Consensus client ───────────────────────────────────────────────
   lighthouse:
-    image: sigp/lighthouse:${LIGHTHOUSE_VERSION}
-    restart: unless-stopped
-    depends_on:
-      - geth
-    command: >
-      lighthouse bn \
-        --network mainnet \
-        --datadir=/opt/lighthouse \
-        --execution-endpoints=http://geth:8551 \
-        --execution-jwt=/jwt/jwt.hex \
-        --checkpoint-sync-url="https://checkpoint.mainnet.ethereum.org" \
-        --metrics \
-        --validator-monitor-auto
+    image: sigp/lighthouse:latest
+    container_name: lighthouse
+    <<: *logging
+    depends_on: [geth]
+    command:
+      - "lighthouse"
+      - "bn"
+      - "--network=mainnet"
+      - "--execution-endpoint=http://geth:8551"
+      - "--execution-jwt=/secrets/jwt.hex"
+      - "--checkpoint-sync-url=https://beaconstate.ethstaker.cc"
+      - "--datadir=/lighthouse"
+      - "--listen-address=0.0.0.0"
+      - "--listen-address=::"
+      - "--http"
+      - "--http-address=0.0.0.0"
+      - "--http-port=5052"
+      - "--port=9000"
+      - "--metrics"
     volumes:
-      - ./data/lighthouse:/opt/lighthouse
-      - ./jwtsecret:/jwt:ro
+      - lighthouse-data:/lighthouse
+      - ./jwtsecret:/secrets:ro
     ports:
-      - "9000:9000"   # P2P
-      - "${LIGHTHOUSE_REST_PORT}:5052"   # REST API
-      - "5054:5054"   # Metrics
-    healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "5052"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    logging: *default-logging
+      - "5052:5052/tcp"
+      - "5054:5054/tcp"
+      - "9000:9000/tcp"
+      - "9000:9000/udp"
+      - "9001:9001/udp"
+    networks:
+      - ethereum-network
+
+volumes:
+  geth-data:
+  lighthouse-data:
 
 networks:
-  default:
-    name: eth-node-net
+  ethereum-network:
     driver: bridge
