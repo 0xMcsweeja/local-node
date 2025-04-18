@@ -23,9 +23,15 @@ services:
       - ./data/geth:/opt/geth
       - ./jwtsecret:/jwt:ro
     ports:
-      - "8545:8545"   # JSON‑RPC
+      - "${GETH_RPC_PORT}:8545"   # JSON‑RPC
       - "8551:8551"   # Engine API
       - "30303:30303" # P2P
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8545"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     logging: *default-logging
 
   lighthouse:
@@ -47,8 +53,14 @@ services:
       - ./jwtsecret:/jwt:ro
     ports:
       - "9000:9000"   # P2P
-      - "5052:5052"   # REST API
+      - "${LIGHTHOUSE_REST_PORT}:5052"   # REST API
       - "5054:5054"   # Metrics
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "5052"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     logging: *default-logging
 
 networks:
